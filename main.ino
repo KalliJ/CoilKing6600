@@ -1,54 +1,64 @@
 #include <LiquidCrystal.h>
 #include <Keypad.h>
+#include <Servo.h>
 
+
+// Säätö arvot
+//
 int powershift = 10; // Moottorin tehon säädössä käytettävä prosentti määrä
 const byte lowestpower = 102; // Teho taso jolla pyöriminen alkaa
-int power = 0; // 
 
+
+// Pinnit ja laitteistoon liittyvien objection luonti.
+//
+const byte hallPin = 2;  // Kierrosluku sensori. Interrupt 0
 const byte motorPin = 13; // PWM
+const byte servoPin = ; // PWM
+LiquidCrystal lcd(46, 47, 48, 49, 50, 51); // lcd(RS, Enable, D4, D5, D6, D7)
 
-byte mode = 0;
-boolean print_dialog = true;
-
-const byte hallPin = 2;  // Interrupt 0
-volatile int r_count = 0;
-unsigned int rpm = 0;
-unsigned int rpmcount = 0;
-unsigned int totalcount = 0;
-unsigned int targetcount = 0;
-unsigned long timeold = 0;
-
-String dialog[] = {" Set coil turns"};
-String input = "";
-
-// Näytön pinnit
-// lcd(RS, Enable, D4, D5, D6, D7)
-LiquidCrystal lcd(46, 47, 48, 49, 50, 51);
-
-// Näppäimistö 4x4
-const byte ROWS = 4; //four rows
-const byte COLS = 4; //four columns
+const byte ROWS = 4;
+const byte COLS = 4;
+byte rowPins[ROWS] = {32, 33, 34, 35}; //connect to the row pinouts of the keypad
+byte colPins[COLS] = {28, 29, 30, 31}; //connect to the column pinouts of the keypad
 char keys[ROWS][COLS] = {
   {'1','2','3','A'},
   {'4','5','6','B'},
   {'7','8','9','C'},
   {'*','0','#','D'}
 };
-byte rowPins[ROWS] = {32, 33, 34, 35}; //connect to the row pinouts of the keypad
-byte colPins[COLS] = {28, 29, 30, 31}; //connect to the column pinouts of the keypad
 
 Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
+Servo oscilator;
+
+
+// Muuttujat
+byte mode = 0;
+boolean print_dialog = true;
+
+int power;
+volatile int r_count;
+unsigned int rpm;
+unsigned int rpmcount;
+unsigned int totalcount;
+unsigned int targetcount;
+unsigned long timeold;
+
+String dialog[] = {" Set coil turns"};
+String input = "";
+
 char key;
 
 void setup(){
-  Serial.begin(9600);
-  powershift = powershift * 255/100;
   // Sensori
   pinMode(hallPin, INPUT);
   //attachInterrupt(1, addToR, FALLING);
   // Moottori
   pinMode(motorPin, OUTPUT);
   analogWrite(motorPin, 0);
+  powershift = powershift * 255/100;
+  //Servo
+  oscilator.attach(servoPin);
+  //oscilator.write(1500);
   // Set up the LCD's number of columns and rows: 
   lcd.begin(16, 2);
   lcd.print(" Coil King 6600");
