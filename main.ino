@@ -6,14 +6,19 @@
 // Säätö arvot
 //
 int powershift = 10; // Moottorin tehon säädössä käytettävä prosentti määrä
-const byte lowestpower = 102; // Teho taso jolla pyöriminen alkaa
-
+byte lowestpower = 102; // Teho taso jolla pyöriminen alkaa
+unsigned int minpulse = 544; // Minimi pulssi servolle (vastapäivään)
+unsigned int maxpulse = 2400; // Maksimi pulssi servolle (myötäpäivään)
+byte startposition = 0; // Servon aloitus paikka työstössä (0-180)
 
 // Pinnit ja laitteistoon liittyvien objection luonti.
 //
 const byte hallPin = 2;  // Kierrosluku sensori. Interrupt 0
 const byte motorPin = 13; // PWM
-const byte servoPin = ; // PWM
+const byte servoPin = 12; // PWM
+
+Servo oscilator;
+
 LiquidCrystal lcd(46, 47, 48, 49, 50, 51); // lcd(RS, Enable, D4, D5, D6, D7)
 
 const byte ROWS = 4;
@@ -26,16 +31,26 @@ char keys[ROWS][COLS] = {
   {'7','8','9','C'},
   {'*','0','#','D'}
 };
-
 Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
-Servo oscilator;
 
 
-// Muuttujat
+// Alku valinnoissa käytettävät muuttujat
+//
 byte mode = 0;
+String input = "";
+char key;
 boolean print_dialog = true;
+String dialogline0[] = {" Winding turns", "Turns per layer"};
+String dialogline1[] = {"         #accept", "*back    #accept"};
 
+// Työstössä käytettävät muuttujat
+//
 int power;
+
+unsigned int oscilationturns;
+byte oscilatorposition;
+boolean reversedirection;
+
 volatile int r_count;
 unsigned int rpm;
 unsigned int rpmcount;
@@ -43,22 +58,23 @@ unsigned int totalcount;
 unsigned int targetcount;
 unsigned long timeold;
 
-String dialog[] = {" Set coil turns"};
-String input = "";
 
-char key;
+
+
 
 void setup(){
   // Sensori
   pinMode(hallPin, INPUT);
-  //attachInterrupt(1, addToR, FALLING);
+  
   // Moottori
-  pinMode(motorPin, OUTPUT);
-  analogWrite(motorPin, 0);
+  power = 0;
   powershift = powershift * 255/100;
+  pinMode(motorPin, OUTPUT);
+  analogWrite(motorPin, power);
+  
   //Servo
-  oscilator.attach(servoPin);
-  //oscilator.write(1500);
+  oscilator.attach(servoPin, minpulse, maxpulse);
+  
   // Set up the LCD's number of columns and rows: 
   lcd.begin(16, 2);
   lcd.print(" Coil King 6600");
@@ -67,47 +83,59 @@ void setup(){
 
 void loop(){
   delay(100);
-  key = keypad.getKey();
-  
+
   if ( print_dialog ) {
     clearLine(0);
-    lcd.print(dialog[mode]);
+    lcd.print(dialogline0[mode]);
     lcd.setCursor(0, 1);
-    lcd.print("  and press #");
-    delay(2500);
-    clearLine(1);
+    lcd.print(dialogline1[mode]);
     print_dialog = false;
   }
+
+  key = keypad.getKey();
     
   if ( mode == 0 ) {
     
     if ( key >= '0' && key <= '9' ){
-      Serial.println(key);
-      //lcd.scrollDisplayRight();
+      if (input == "")
+        clearLine(1);
       input = input + key;
       lcd.print(key);
-      
     }
     else if (key == '#' && input != "" ) {
       mode++;
       targetcount = input.toInt();
       input = "";
+      print_dialog = true;
+    }
+    
+  }
+  else if ( mode == 1 ) {
+  
+    if ( key >= '0' && key <= '9' ){
+      if (input == "")
+        clearLine(1);
+      input = input + key;
+      lcd.print(key);
+    }
+    else if (key == '#' && input != "" ) {
+      mode++;
+      oscilationturns = input.toInt();
+      input = "";
       //print_dialog = true;
-      
       startWork();
     }
+    
   }
   /*
-  else if (mode == 1) {
+  else if ( mode == 2 ) {
   
   }
-  else if (mode == 2) {
-  
-  }
-  else if (mode == 3) {
+  else if ( mode == 3 ) {
   
   }
   */
+  
   else { // Työstö
     
     totalcount = totalcount + r_count;
@@ -119,6 +147,10 @@ void loop(){
       rpmcount = 0;
       lcd.setCursor(7, 1);
       lcd.print(String(" RPM ") + rpm + String(" "));
+    }
+    
+    if (oscilationturns > 0) {
+      setOscilatorPosition();
     }
 
     if (totalcount < targetcount) {
@@ -151,7 +183,7 @@ void loop(){
         endWork();
       }
     }
-    else { // sammuta
+    else {
       endWork();
     }
   }
@@ -180,15 +212,39 @@ void startWork() {
   lcd.print("-*    0/C     #+");
   clearLine(1);
   timeold = millis();
+  
+  if (oscilationturns >= targetcount) {
+    oscilationturns = 0;
+    oscilatorposition = 90;
+    oscilator.write(oscilatorposition);
+  }
+  else {
+    reversedirection = false;
+    oscilatorposition = startposition;
+    oscilator.write(oscilatorposition);
+  }
+  
 }
 
 void endWork() {
   detachInterrupt(0);
-  //targetcount = 0;
   power = 0;
   analogWrite(motorPin, power);
-
   lcd.clear();
   mode = 0;
   print_dialog = true;
+}
+
+void setOscilatorPosition() {
+  oscilatorposition = (totalcount % oscilationturns)/oscilationturns*180;
+  
+  if (reversedirection)
+    oscilatorposition = 180 - oscilatorposition;
+    
+  if ( oscilatorposition == 0 )
+    reversedirection = false;
+  else if ( oscilatorposition == 180 )
+    reversedirection = true;
+    
+  oscilator.write(oscilatorposition);
 }
